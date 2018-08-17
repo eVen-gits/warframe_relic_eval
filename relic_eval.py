@@ -2,6 +2,7 @@ import json
 import requests
 import sys
 import types
+import csv
 #https://go.microsoft.com/fwlink/?LinkId=691126
 #easy_install python-Levenshtein
 from fuzzywuzzy import fuzz
@@ -155,7 +156,20 @@ if __name__ == '__main__':
 
     item_dict = init_data(relic_list, item_list)
 
+    csvfile = open('export.csv', 'w', newline='', encoding='utf-8')
+    filewriter = csv.writer(csvfile, delimiter=',')
+
+    #n = 0
     for e in relic_list:
         print(e.tier, e.relicName, e.state, e.relic_value())
+        csvrow = [e.tier, e.relicName, e.state, e.relic_value()]
         for r in e.rewards:
             print('\t', r.chance, r.itemName, r.item_value())
+            csvrow += [r.itemName, r.chance, r.item_value()]
+
+        filewriter.writerow(csvrow)
+        #n += 1
+        #if n >= 10:
+        #    break
+
+    csvfile.close()
