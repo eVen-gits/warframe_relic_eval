@@ -35,6 +35,13 @@ drop_chance = {
     }
 }
 
+relic_tiers = {
+    'Lith',
+    'Meso',
+    'Neo',
+    'Axi'
+}
+
 def median(lst):
     n = len(lst)
     if n < 1:
@@ -80,6 +87,10 @@ def init_data(relic_list, item_list):
     keys = [item.item_name for item in item_list]
     item_dict = dict(zip(keys, item_list))
 
+    relic_dict = dict()
+    for tier in relic_tiers:
+        relic_dict[tier] = dict()
+
     n = len(relic_list)
     count = 0
 
@@ -114,13 +125,17 @@ def init_data(relic_list, item_list):
 
         relic.relic_value = types.MethodType(relic_value, relic)
 
-        count = count+1
+        if relic.relicName not in relic_dict[relic.tier]:
+            relic_dict[relic.tier][relic.relicName] = dict()
 
+        relic_dict[relic.tier][relic.relicName][relic.state] = relic
+
+        count = count+1
         sys.stdout.write("\rInitializing {:.2f}%".format(100*count/n))
         sys.stdout.flush()
 
     print(' ... Done!')
-    return item_dict
+    return relic_dict, item_dict
 
 class Json2Obj:
     def __init__(self, json):
@@ -154,22 +169,22 @@ if __name__ == '__main__':
         )['payload']['items']['en']
     )
 
-    item_dict = init_data(relic_list, item_list)
+    relic_dict, item_dict = init_data(relic_list, item_list)
 
     csvfile = open('export.csv', 'w', newline='', encoding='utf-8')
     filewriter = csv.writer(csvfile, delimiter=',')
 
-    #n = 0
-    for e in relic_list:
-        print(e.tier, e.relicName, e.state, e.relic_value())
-        csvrow = [e.tier, e.relicName, e.state, e.relic_value()]
-        for r in e.rewards:
-            print('\t', r.chance, r.itemName, r.item_value())
-            csvrow += [r.itemName, r.chance, r.item_value()]
 
-        filewriter.writerow(csvrow)
-        #n += 1
-        #if n >= 10:
-        #    break
-
+    rows = 0
+    for r_era in relic_dict.values():
+        for r_name in r_era.values():
+            for r in r_name.values():
+                #if rows > 10:
+                #    break
+                print(r.tier, r.relicName, r.state, r.relic_value())
+                csvrow = [r.tier, r.relicName, r.state, r.relic_value()]
+                for drop in sorted(r.rewards, key=lambda el: el.item_value()):
+                    csvrow += [drop.itemName, drop.item_value()]
+                filewriter.writerow(csvrow)
+                #rows = rows+1
     csvfile.close()
