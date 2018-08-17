@@ -8,39 +8,21 @@ import csv
 from fuzzywuzzy import fuzz
 from ratelimit import limits, sleep_and_retry
 
-DEBUG = True
+refinement_levels = [
+    'Era',
+    'Relic',
+    'Intact',
+    'Exceptional',
+    'Flawless',
+    'Radiant'
+]
 
-drop_chance = {
-    'quality': {
-        'intact': {
-            'common': 0.76/3,
-            'uncommon': 0.11,
-            'rare': 0.02
-        },
-        'exceptional': {
-            'common': 0.7/3,
-            'uncommon': 0.13,
-            'rare': 0.04
-        },
-        'flawless': {
-            'common': 0.2,
-            'uncommon': 0.17,
-            'rare': 0.06
-        },
-        'radiant': {
-            'common': 1/6,
-            'uncommon': 0.2,
-            'rare': 0.2
-        }
-    }
-}
-
-relic_tiers = {
+relic_tiers = [
     'Lith',
     'Meso',
     'Neo',
     'Axi'
-}
+]
 
 def median(lst):
     n = len(lst)
@@ -52,7 +34,7 @@ def median(lst):
             return sum(sorted(lst)[n//2-1:n//2+1])/2.0
 
 @sleep_and_retry
-@limits(calls=3, period=1.5)
+@limits(calls=3, period=2)
 def call_api(url):
     response = client.get(url)
     if response.status_code != 200:
@@ -66,7 +48,7 @@ def json_to_obj_list(json_list):
     return obj_list
 
 def item_value(self):
-    if self.itemName == 'Forma Blueprint':
+    if not hasattr(self, 'url_name'):
         return 0
     if not self._value:
         url = "https://api.warframe.market/v1/items/{0}/orders".format(self.url_name)
@@ -78,9 +60,8 @@ def item_value(self):
 
 def relic_value(self):
     val = 0
-    for reward in self.rewards:
+    for reward in sorted(self.rewards, key=lambda el: el.chance):
         val = val +  reward.chance/100 * reward.item_value()
-
     return val
 
 def init_data(relic_list, item_list):
@@ -103,17 +84,14 @@ def init_data(relic_list, item_list):
 
                 if reward.itemName in item_dict.keys():
                     match = item_dict.get(reward.itemName)
-                    relic.rewards[i] = match
-                    relic.rewards[i].__dict__ = {**reward.__dict__, **match.__dict__}
+                    relic.rewards[i].url_name = match.url_name
                 elif item_name in item_dict.keys():
                     match = item_dict.get(item_name)
-                    relic.rewards[i] = match
-                    relic.rewards[i].__dict__ = {**reward.__dict__, **match.__dict__}
+                    relic.rewards[i].url_name = match.url_name
                 else:
                     for j, item in enumerate(item_list):
                         if fuzz.token_set_ratio(item.item_name, reward.itemName) == 100:
-                            relic.rewards[i] = item
-                            relic.rewards[i].__dict__ = {**reward.__dict__, **item.__dict__}
+                            relic.rewards[i].url_name = item.url_name
                             match = item
                             break
                 if not match:
@@ -122,6 +100,7 @@ def init_data(relic_list, item_list):
             #Init value cache field
             match._value = None
             match.item_value = types.MethodType(item_value, match)
+            relic.rewards[i].item_value = match.item_value
 
         relic.relic_value = types.MethodType(relic_value, relic)
 
@@ -174,17 +153,20 @@ if __name__ == '__main__':
     csvfile = open('export.csv', 'w', newline='', encoding='utf-8')
     filewriter = csv.writer(csvfile, delimiter=',')
 
-
     rows = 0
-    for r_era in relic_dict.values():
-        for r_name in r_era.values():
-            for r in r_name.values():
-                #if rows > 10:
-                #    break
-                print(r.tier, r.relicName, r.state, r.relic_value())
-                csvrow = [r.tier, r.relicName, r.state, r.relic_value()]
-                for drop in sorted(r.rewards, key=lambda el: el.item_value()):
-                    csvrow += [drop.itemName, drop.item_value()]
-                filewriter.writerow(csvrow)
-                #rows = rows+1
+    filewriter.writerow(refinement_levels)
+    for k_era, v_era in relic_dict.items():
+        for k_name, v_name in v_era.items():
+            #if rows > 10:
+            #    break
+            csvrow = [k_era, k_name]
+            print(k_era, k_name)
+            for r in v_name.values():
+                csvrow += [r.relic_value()]
+                #print(r.tier, r.relicName, r.state, r.relic_value())
+
+            for drop in sorted(v_name['Intact'].rewards, key=lambda el: el.item_value()):
+                csvrow += [drop.itemName, drop.item_value()]
+            filewriter.writerow(csvrow)
+            #rows = rows+1
     csvfile.close()
