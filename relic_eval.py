@@ -8,14 +8,12 @@ import csv
 from fuzzywuzzy import fuzz
 from ratelimit import limits, sleep_and_retry
 
-refinement_levels = [
-    'Era',
-    'Relic',
-    'Intact',
-    'Exceptional',
-    'Flawless',
-    'Radiant'
-]
+refinement_levels = {
+    'Intact': 0,
+    'Exceptional': 25,
+    'Flawless': 50,
+    'Radiant': 10
+}
 
 relic_tiers = [
     'Lith',
@@ -150,23 +148,39 @@ if __name__ == '__main__':
 
     relic_dict, item_dict = init_data(relic_list, item_list)
 
-    csvfile = open('export.csv', 'w', newline='', encoding='utf-8')
-    filewriter = csv.writer(csvfile, delimiter=',')
+    csv_values = open('export.csv', 'w', newline='', encoding='utf-8')
+    values_writer = csv.writer(csv_values, delimiter=',')
+
+    csv_refinement = open('refinement.csv', 'w', newline='', encoding='utf-8')
+    refinement_writer = csv.writer(csv_refinement, delimiter=',')
 
     rows = 0
-    filewriter.writerow(refinement_levels)
+    values_writer.writerow(['Era', 'Relic',] + list(refinement_levels.keys()))
+    refinement_writer.writerow(['Era', 'Relic',] + list(refinement_levels.keys())[1:])
     for k_era, v_era in relic_dict.items():
         for k_name, v_name in v_era.items():
             #if rows > 10:
             #    break
-            csvrow = [k_era, k_name]
+            value_row = [k_era, k_name]
+            refinement_row = [k_era, k_name]
             print(k_era, k_name)
+            first = prev = None
             for r in v_name.values():
-                csvrow += [r.relic_value()]
-                #print(r.tier, r.relicName, r.state, r.relic_value())
+                relic_value = r.relic_value()
+                value_row += [relic_value]
+                if not first:
+                    first = relic_value
+                if prev:
+                    gain = relic_value - prev
+                    gpp = gain/refinement_levels[r.state]
+                    refinement_row += [gpp]
+                prev = relic_value
 
             for drop in sorted(v_name['Intact'].rewards, key=lambda el: el.item_value()):
-                csvrow += [drop.itemName, drop.item_value()]
-            filewriter.writerow(csvrow)
+                value_row += [drop.itemName, drop.item_value()]
+
+            values_writer.writerow(value_row)
+            refinement_writer.writerow(refinement_row)
             #rows = rows+1
-    csvfile.close()
+    csv_values.close()
+    csv_refinement.close()
