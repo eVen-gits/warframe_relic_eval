@@ -12,7 +12,7 @@ refinement_levels = {
     'Intact': 0,
     'Exceptional': 25,
     'Flawless': 50,
-    'Radiant': 10
+    'Radiant': 100
 }
 
 relic_tiers = [
@@ -143,7 +143,7 @@ if __name__ == '__main__':
             call_api(
                 'https://api.warframe.market/v1/items'
             ).text
-        )['payload']['items']['en']
+        )['payload']['items']
     )
 
     relic_dict, item_dict = init_data(relic_list, item_list)
