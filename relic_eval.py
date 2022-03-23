@@ -7,6 +7,7 @@ import csv
 #easy_install python-Levenshtein
 from fuzzywuzzy import fuzz
 from ratelimit import limits, sleep_and_retry
+from tqdm import tqdm
 
 refinement_levels = {
     'Intact': 0,
@@ -19,7 +20,8 @@ relic_tiers = [
     'Lith',
     'Meso',
     'Neo',
-    'Axi'
+    'Axi',
+    'Requiem'
 ]
 
 def median(lst):
@@ -60,19 +62,19 @@ def make_dropped_relic_set(mission_drops, cetus_drops, solaris_drops):
                 for item in rewards:
                    if fuzz.token_set_ratio(item['itemName'], "Relic") == 100:
                         drop_relic_set.add(item['itemName'])
-    
+
     for bounty in cetus_drops:
         for rot in bounty['rewards'].values():
             for item in rot:
                 if fuzz.token_set_ratio(item['itemName'], "Relic") == 100:
                     drop_relic_set.add(item['itemName'])
-    
+
     for bounty in solaris_drops:
         for rot in bounty['rewards'].values():
             for item in rot:
                 if fuzz.token_set_ratio(item['itemName'], "Relic") == 100:
                     drop_relic_set.add(item['itemName'])
-    
+
     return drop_relic_set
 
 def item_value(self):
@@ -100,10 +102,7 @@ def init_data(relic_list, item_list, dropped_relics):
     for tier in relic_tiers:
         relic_dict[tier] = dict()
 
-    n = len(relic_list)
-    count = 0
-
-    for relic in relic_list:
+    for relic in tqdm(relic_list, desc='Initializing relic data'):
         for i, reward in enumerate(relic.rewards):
             if reward.itemName == 'Forma Blueprint':
                 match = reward
@@ -135,7 +134,7 @@ def init_data(relic_list, item_list, dropped_relics):
             if fuzz.token_set_ratio(drop_relic, "{0} {1}".format(relic.tier, relic.relicName)) == 100:
                 relic.vaulted = False
                 break
-            
+
         relic.relic_value = types.MethodType(relic_value, relic)
 
         if relic.relicName not in relic_dict[relic.tier]:
@@ -143,11 +142,6 @@ def init_data(relic_list, item_list, dropped_relics):
 
         relic_dict[relic.tier][relic.relicName][relic.state] = relic
 
-        count = count+1
-        sys.stdout.write("\rInitializing {:.2f}%".format(100*count/n))
-        sys.stdout.flush()
-
-    print(' ... Done!')
     return relic_dict, item_dict
 
 class Json2Obj:
@@ -181,7 +175,7 @@ if __name__ == '__main__':
             ).text
         )['payload']['items']
     )
-    
+
     mission_drops = json.loads(
         call_api(
             'https://drops.warframestat.us/data/missionRewards.json'
@@ -197,7 +191,7 @@ if __name__ == '__main__':
             'https://drops.warframestat.us/data/solarisBountyRewards.json'
         ).text
     )['solarisBountyRewards']
-    
+
     dropped_relics = make_dropped_relic_set(mission_drops, cetus_drops, solaris_drops)
 
     relic_dict, item_dict = init_data(relic_list, item_list, dropped_relics)
@@ -211,13 +205,16 @@ if __name__ == '__main__':
     rows = 0
     values_writer.writerow(['Era', 'Relic', 'Vaulted',] + list(refinement_levels.keys()))
     refinement_writer.writerow(['Era', 'Relic', 'Vaulted',] + list(refinement_levels.keys())[1:])
-    for k_era, v_era in relic_dict.items():
-        for k_name, v_name in v_era.items():
+    era_pbar = tqdm(relic_dict.items(), total=len(relic_dict.items()))
+    for k_era, v_era in era_pbar:
+        era_pbar.set_description('Processing {} era'.format(k_era))
+        pbar = tqdm(v_era.items(), total=len(v_era.items()))
+        for k_name, v_name in pbar:
             #if rows > 10:
             #    break
+            pbar.set_description('Relic {}'.format(k_name))
             value_row = [k_era, k_name, list(v_name.values())[0].vaulted]
             refinement_row = [k_era, k_name, list(v_name.values())[0].vaulted]
-            print(k_era, k_name)
             first = prev = None
             for r in v_name.values():
                 relic_value = r.relic_value()

@@ -1,3 +1,5 @@
 requests
 ratelimit
 fuzzywuzzy
+python-Levenshtein
+tqdm
