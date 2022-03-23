@@ -12,7 +12,7 @@ refinement_levels = {
     'Intact': 0,
     'Exceptional': 25,
     'Flawless': 50,
-    'Radiant': 10
+    'Radiant': 100
 }
 
 relic_tiers = [
@@ -45,6 +45,36 @@ def json_to_obj_list(json_list):
         obj_list.append(Json2Obj(json_list[i]))
     return obj_list
 
+def make_dropped_relic_set(mission_drops, cetus_drops, solaris_drops):
+    drop_relic_set = set()
+
+    for planet in mission_drops.values():
+        for node in planet.values():
+            rewards = node['rewards']
+            if isinstance(rewards, dict):
+                for rot in rewards.values():
+                    for item in rot:
+                        if fuzz.token_set_ratio(item['itemName'], "Relic") == 100:
+                            drop_relic_set.add(item['itemName'])
+            else:
+                for item in rewards:
+                   if fuzz.token_set_ratio(item['itemName'], "Relic") == 100:
+                        drop_relic_set.add(item['itemName'])
+    
+    for bounty in cetus_drops:
+        for rot in bounty['rewards'].values():
+            for item in rot:
+                if fuzz.token_set_ratio(item['itemName'], "Relic") == 100:
+                    drop_relic_set.add(item['itemName'])
+    
+    for bounty in solaris_drops:
+        for rot in bounty['rewards'].values():
+            for item in rot:
+                if fuzz.token_set_ratio(item['itemName'], "Relic") == 100:
+                    drop_relic_set.add(item['itemName'])
+    
+    return drop_relic_set
+
 def item_value(self):
     if not hasattr(self, 'url_name'):
         return 0
@@ -62,7 +92,7 @@ def relic_value(self):
         val = val +  reward.chance/100 * reward.item_value()
     return val
 
-def init_data(relic_list, item_list):
+def init_data(relic_list, item_list, dropped_relics):
     keys = [item.item_name for item in item_list]
     item_dict = dict(zip(keys, item_list))
 
@@ -100,6 +130,12 @@ def init_data(relic_list, item_list):
             match.item_value = types.MethodType(item_value, match)
             relic.rewards[i].item_value = match.item_value
 
+        relic.vaulted = True
+        for drop_relic in dropped_relics:
+            if fuzz.token_set_ratio(drop_relic, "{0} {1}".format(relic.tier, relic.relicName)) == 100:
+                relic.vaulted = False
+                break
+            
         relic.relic_value = types.MethodType(relic_value, relic)
 
         if relic.relicName not in relic_dict[relic.tier]:
@@ -143,10 +179,28 @@ if __name__ == '__main__':
             call_api(
                 'https://api.warframe.market/v1/items'
             ).text
-        )['payload']['items']['en']
+        )['payload']['items']
     )
+    
+    mission_drops = json.loads(
+        call_api(
+            'https://drops.warframestat.us/data/missionRewards.json'
+        ).text
+    )['missionRewards']
+    cetus_drops = json.loads(
+        call_api(
+            'https://drops.warframestat.us/data/cetusBountyRewards.json'
+        ).text
+    )['cetusBountyRewards']
+    solaris_drops = json.loads(
+        call_api(
+            'https://drops.warframestat.us/data/solarisBountyRewards.json'
+        ).text
+    )['solarisBountyRewards']
+    
+    dropped_relics = make_dropped_relic_set(mission_drops, cetus_drops, solaris_drops)
 
-    relic_dict, item_dict = init_data(relic_list, item_list)
+    relic_dict, item_dict = init_data(relic_list, item_list, dropped_relics)
 
     csv_values = open('export.csv', 'w', newline='', encoding='utf-8')
     values_writer = csv.writer(csv_values, delimiter=',')
@@ -155,14 +209,14 @@ if __name__ == '__main__':
     refinement_writer = csv.writer(csv_refinement, delimiter=',')
 
     rows = 0
-    values_writer.writerow(['Era', 'Relic',] + list(refinement_levels.keys()))
-    refinement_writer.writerow(['Era', 'Relic',] + list(refinement_levels.keys())[1:])
+    values_writer.writerow(['Era', 'Relic', 'Vaulted',] + list(refinement_levels.keys()))
+    refinement_writer.writerow(['Era', 'Relic', 'Vaulted',] + list(refinement_levels.keys())[1:])
     for k_era, v_era in relic_dict.items():
         for k_name, v_name in v_era.items():
             #if rows > 10:
             #    break
-            value_row = [k_era, k_name]
-            refinement_row = [k_era, k_name]
+            value_row = [k_era, k_name, list(v_name.values())[0].vaulted]
+            refinement_row = [k_era, k_name, list(v_name.values())[0].vaulted]
             print(k_era, k_name)
             first = prev = None
             for r in v_name.values():
